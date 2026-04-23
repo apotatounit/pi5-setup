@@ -124,7 +124,8 @@ done
 SSH_PUBKEY="$(tr -d '\n' < "$SSH_PUBKEY_PATH")"
 RANDOM_PW="$("$OPENSSL" rand -base64 30 | tr -d '=+/' | cut -c1-40)"
 CRYPT_PW="$("$OPENSSL" passwd -6 "$RANDOM_PW")"
-echo "$RANDOM_PW" > "${HERE}/.last_password"
+# No trailing newline — paste into ssh matches shadow hash exactly
+printf '%s' "$RANDOM_PW" > "${HERE}/.last_password"
 chmod 600 "${HERE}/.last_password"
 
 export WIFI_AP_BOOT_ONLY="${WIFI_AP_BOOT_ONLY:-0}"
@@ -178,9 +179,12 @@ s = s.replace("__SSH_PASSWORD_AUTH__", "true" if pwauth else "false")
 open(out_path, "w", encoding="utf-8").write(s)
 PYEOF
 chmod 600 /Volumes/bootfs/custom.toml
+if grep -qE '__[A-Z0-9_]+__' /Volumes/bootfs/custom.toml; then
+  die "custom.toml still contains __PLACEHOLDERS__ — render bug (check 01-flash.sh / env exports)"
+fi
 ok "custom.toml written"
 if [[ "${SSH_PASSWORD_AUTH:-}" == "1" || "${SSH_PASSWORD_AUTH:-}" == "true" || "${SSH_PASSWORD_AUTH:-}" == "yes" ]]; then
-  info "SSH password auth ON for first boot — use: cat ${HERE}/.last_password   (run ./03-bootstrap.sh later to lock sshd again)"
+  info "SSH password auth ON for first boot — copy password (no newline): pbcopy < ${HERE}/.last_password   then: ssh pi@<ip>   (bootstrap turns password auth off again)"
 fi
 
 : > /Volumes/bootfs/ssh
