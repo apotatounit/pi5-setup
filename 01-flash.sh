@@ -235,8 +235,10 @@ import pathlib, sys
 p = pathlib.Path(sys.argv[1])
 c = p.read_text(encoding="utf-8", errors="replace").strip().replace("\n", " ")
 if "pi5-boot-install-ap.sh" not in c:
+    # Single path (shebang in script). Do not use "/bin/bash /path" — strip_cmdline and
+    # kernel cmdline parsing treat spaces poorly and can corrupt cmdline.txt.
     c += (
-        " systemd.run=/bin/bash /boot/firmware/pi5-boot-install-ap.sh"
+        " systemd.run=/boot/firmware/pi5-boot-install-ap.sh"
         " systemd.run_success_action=none"
         " systemd.run_failure_action=reboot"
         " systemd.unit=kernel-command-line.target"
