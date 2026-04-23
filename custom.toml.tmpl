@@ -1,0 +1,28 @@
+# Raspberry Pi OS firstboot config. Placed at /boot/firmware/custom.toml.
+# Rendered by 01-flash.sh; do not edit the rendered file directly.
+
+config_version = 1
+
+[system]
+hostname = "__PI_HOSTNAME__"
+
+[user]
+name = "__PI_USER__"
+password = "__PI_PASSWORD_CRYPT__"
+password_encrypted = true
+
+[ssh]
+enabled = true
+password_authentication = false
+authorized_keys = [ "__SSH_PUBKEY__" ]
+
+[wlan]
+ssid = "__WIFI_SSID__"
+password = "__WIFI_PASSWORD__"
+password_encrypted = false
+hidden = false
+country = "__WIFI_COUNTRY__"
+
+[locale]
+keymap = "__KEYMAP__"
+timezone = "__TIMEZONE__"

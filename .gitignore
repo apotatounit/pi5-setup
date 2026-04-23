@@ -1,0 +1,8 @@
+# local secrets / machine state
+config.env
+.last_password
+.cache/
+*.img
+*.xz
+
+.DS_Store
