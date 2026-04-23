@@ -129,7 +129,6 @@ printf '%s' "$RANDOM_PW" > "${HERE}/.last_password"
 chmod 600 "${HERE}/.last_password"
 
 export WIFI_AP_BOOT_ONLY="${WIFI_AP_BOOT_ONLY:-0}"
-export SSH_PASSWORD_AUTH="${SSH_PASSWORD_AUTH:-}"
 export PI_HOSTNAME PI_USER CRYPT_PW SSH_PUBKEY WIFI_COUNTRY TIMEZONE KEYMAP
 if is_boot_ap; then
   export WIFI_SSID="${WIFI_SSID:-unused}"
@@ -174,8 +173,6 @@ else:
     }
 for k, v in mapping.items():
     s = s.replace(f'"__{k}__"', t(v))
-pwauth = os.environ.get("SSH_PASSWORD_AUTH", "").lower() in ("1", "true", "yes")
-s = s.replace("__SSH_PASSWORD_AUTH__", "true" if pwauth else "false")
 open(out_path, "w", encoding="utf-8").write(s)
 PYEOF
 chmod 600 /Volumes/bootfs/custom.toml
@@ -183,11 +180,12 @@ if grep -qE '__[A-Z0-9_]+__' /Volumes/bootfs/custom.toml; then
   die "custom.toml still contains __PLACEHOLDERS__ — render bug (check 01-flash.sh / env exports)"
 fi
 ok "custom.toml written"
-if [[ "${SSH_PASSWORD_AUTH:-}" == "1" || "${SSH_PASSWORD_AUTH:-}" == "true" || "${SSH_PASSWORD_AUTH:-}" == "yes" ]]; then
-  info "SSH password auth ON for first boot — copy password (no newline): pbcopy < ${HERE}/.last_password   then: ssh pi@<ip>   (bootstrap turns password auth off again)"
-fi
 
 : > /Volumes/bootfs/ssh
+# If the image shipped firstrun.sh (e.g. from Raspberry Pi Imager), init_config skips [user]
+# when that script references userconf — no rename to pi and no authorized_keys. We use custom.toml only.
+rm -f /Volumes/bootfs/firstrun.sh /Volumes/bootfs/firmware/firstrun.sh 2>/dev/null || true
+ok "firstrun.sh removed from bootfs if present (custom.toml owns first user + SSH keys)"
 
 if is_boot_ap; then
   info "WIFI_AP_BOOT_ONLY: staging NetworkManager AP for second boot (no infra Wi-Fi in custom.toml)"
