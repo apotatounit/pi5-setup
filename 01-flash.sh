@@ -128,6 +128,7 @@ echo "$RANDOM_PW" > "${HERE}/.last_password"
 chmod 600 "${HERE}/.last_password"
 
 export WIFI_AP_BOOT_ONLY="${WIFI_AP_BOOT_ONLY:-0}"
+export SSH_PASSWORD_AUTH="${SSH_PASSWORD_AUTH:-}"
 export PI_HOSTNAME PI_USER CRYPT_PW SSH_PUBKEY WIFI_COUNTRY TIMEZONE KEYMAP
 if is_boot_ap; then
   export WIFI_SSID="${WIFI_SSID:-unused}"
@@ -172,10 +173,15 @@ else:
     }
 for k, v in mapping.items():
     s = s.replace(f'"__{k}__"', t(v))
+pwauth = os.environ.get("SSH_PASSWORD_AUTH", "").lower() in ("1", "true", "yes")
+s = s.replace("__SSH_PASSWORD_AUTH__", "true" if pwauth else "false")
 open(out_path, "w", encoding="utf-8").write(s)
 PYEOF
 chmod 600 /Volumes/bootfs/custom.toml
 ok "custom.toml written"
+if [[ "${SSH_PASSWORD_AUTH:-}" == "1" || "${SSH_PASSWORD_AUTH:-}" == "true" || "${SSH_PASSWORD_AUTH:-}" == "yes" ]]; then
+  info "SSH password auth ON for first boot — use: cat ${HERE}/.last_password   (run ./03-bootstrap.sh later to lock sshd again)"
+fi
 
 : > /Volumes/bootfs/ssh
 
