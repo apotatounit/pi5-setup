@@ -62,6 +62,7 @@ make all
 - `custom.toml` is written mode 600. The plaintext Wi-Fi password never leaves the bootfs after firstboot consumes and deletes it.
 - SSH is key-only from first boot; password auth is disabled both in `custom.toml` and reinforced by `sshd_config.d/10-hardening.conf`.
 - The user password in `custom.toml` is random per flash (base64, 40 chars), stored in `.last_password` on the Mac only, and written to `/etc/shadow` as SHA-512. You never need it unless you plug in a keyboard and monitor.
+- **SSH** never uses that password: use the **private key** paired with `SSH_PUBKEY_PATH` (e.g. `ssh -i ~/.ssh/id_ed25519 pi@10.42.0.1`). If `ssh` asks for a password, the client is not offering a key the Pi accepts — fix `~/.ssh` permissions, key path, or `authorized_keys` on the card after re-flash.
 
 ## Reproducing from scratch
 
