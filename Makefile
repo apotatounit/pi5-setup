@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 HOST  := $(shell . ./config.env 2>/dev/null && echo $$PI_HOSTNAME)
 
-.PHONY: help flash connect bootstrap audit all clean version-commit
+.PHONY: help flash connect bootstrap wifi-ap audit all clean version-commit
 help:
 	@awk 'BEGIN{FS=":.*##"; printf "targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-10s %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 
@@ -15,8 +15,11 @@ flash: config.env ## flash SD + firstboot config (macOS)
 connect: ## discover Pi + add ~/.ssh/config entry
 	bash ./02-connect.sh
 
-bootstrap: ## run idempotent Pi-side setup over SSH
-	ssh $(HOST) 'bash -s' < 03-bootstrap.sh
+bootstrap: config.env ## idempotent Pi setup + optional Wi-Fi AP (see WIFI_AP_* in config.env)
+	bash ./tools/ssh-with-config.sh 03-bootstrap.sh 05-wifi-ap.sh
+
+wifi-ap: config.env ## only enable/configure the Pi Wi-Fi hotspot (NetworkManager)
+	bash ./tools/ssh-with-config.sh 05-wifi-ap.sh
 
 audit: ## run audit on the Pi
 	ssh $(HOST) 'bash -s' < 04-audit.sh

@@ -24,9 +24,17 @@ make flash       # downloads + verifies image, prompts for SD target, flashes,
                  # drops custom.toml into /boot/firmware for firstboot
 # --- move card to Pi, power on, wait ~90s ---
 make connect     # resolves <hostname>.local, writes ~/.ssh/config entry
-make bootstrap   # idempotent Pi-side setup: hardening + pyenv/uv + Docker
+make bootstrap   # Pi-side setup + optional Wi-Fi AP (see WIFI_AP_* in config.env)
+make wifi-ap     # only (re)configure the Pi as a Wi-Fi hotspot you can join
 make audit       # read-only check: passes/fails every invariant
 ```
+
+Set `WIFI_AP_PASSWORD` (≥8 characters) and optional `WIFI_AP_SSID` / `WIFI_AP_ENABLE` in `config.env`. The first `make wifi-ap` or `make bootstrap` still needs **some way to SSH into the Pi once** (Ethernet, USB‑gadget/serial, or working infra Wi‑Fi). After that, join the Pi’s AP (default SSID `<hostname>-ap`) and SSH to the printed address — often `10.42.0.1`.
+
+### No Ethernet and you cannot see the Pi on the network
+
+1. **`WIFI_AP_BOOT_ONLY=1` in `config.env`** — `make flash` then skips `[wlan]` in `custom.toml` and stages a **NetworkManager hotspot** on the boot partition. The Pi still does the normal **first-boot** (`init=` resize + `custom.toml` for user/SSH). After that reboot, **second boot** runs a one-shot installer from `cmdline.txt`, copies a hotspot profile, starts it, and strips the `systemd.run=` line. On your phone, join **`${PI_HOSTNAME}-ap`** (or `WIFI_AP_SSID` if set) with **`WIFI_AP_PASSWORD`**, then **`ssh <user>@10.42.0.1`**. The AP SSID must be ASCII letters, digits, or hyphen only (default fits).
+2. **USB‑serial to GPIO** (3.3 V): connect GND, **GPIO15 (RXD0)** to adapter **TX**, **GPIO14 (TXD0)** to adapter **RX**, enable serial in Raspberry Pi Imager or use a monitor once — then you can log in and fix Wi‑Fi even if the rescue AP path fails.
 
 Or in one go once the card is flashed and booted:
 
@@ -40,9 +48,11 @@ make all
 |---|---|---|
 | `config.env` | Mac | Your inputs. Never commit. |
 | `custom.toml.tmpl` | Mac | Firstboot template — rendered into `/boot/firmware/custom.toml`. |
-| `01-flash.sh` | Mac | Download + SHA256 verify image, identify SD card (refuses non-removable and ≥1TB devices), flash, inject rendered `custom.toml`, eject. |
+| `01-flash.sh` | Mac | Download + SHA256 verify image, identify SD card (refuses non-removable and ≥1TB devices), flash, inject rendered `custom.toml`, optional **boot-only rescue AP** (`WIFI_AP_BOOT_ONLY`), eject. |
+| `templates/boot-ap-install.sh` | Mac → bootfs | Consumed on the Pi’s **second** boot when `WIFI_AP_BOOT_ONLY=1`; installs `pi5-hotspot.nmconnection` and removes the extra `cmdline.txt` flags. |
 | `02-connect.sh` | Mac | Wait for `<host>.local`, prime `known_hosts`, idempotently update `~/.ssh/config` with a block-delimited entry for this Pi. |
 | `03-bootstrap.sh` | Pi | `apt` base, sshd hardening drop-in, UFW, fail2ban, unattended-upgrades, pyenv + uv + pipx, Docker CE + compose plugin. Every stanza state-checks before acting. |
+| `05-wifi-ap.sh` | Pi | Optional NetworkManager hotspot (`nmcli device wifi hotspot`): join the Pi’s SSID, SSH to its gateway IP (often `10.42.0.1`). Wired over `make bootstrap` / `make wifi-ap`. |
 | `04-audit.sh` | Pi | Read-only posture check. Exits non-zero on any failure. |
 | `Makefile` | Mac | Orchestration. |
 

@@ -19,9 +19,23 @@ ok()   { printf '\033[32m ok\033[0m %s\n' "$*"; }
 # shellcheck source=/dev/null
 source "$CONFIG"
 
-for v in PI_HOSTNAME PI_USER SSH_PUBKEY_PATH WIFI_SSID WIFI_PASSWORD WIFI_COUNTRY TIMEZONE KEYMAP IMG_URL IMG_SHA_URL; do
-  [[ -n "${!v:-}" ]] || die "config.env missing $v"
-done
+BOOT_AP="${WIFI_AP_BOOT_ONLY:-0}"
+is_boot_ap() { [[ "$BOOT_AP" == "1" || "$BOOT_AP" == "true" || "$BOOT_AP" == "yes" ]]; }
+
+if is_boot_ap; then
+  for v in PI_HOSTNAME PI_USER SSH_PUBKEY_PATH WIFI_COUNTRY TIMEZONE KEYMAP IMG_URL IMG_SHA_URL; do
+    [[ -n "${!v:-}" ]] || die "config.env missing $v"
+  done
+  APSSID="${WIFI_AP_SSID:-${PI_HOSTNAME}-ap}"
+  [[ "$APSSID" =~ ^[A-Za-z0-9-]{1,32}$ ]] \
+    || die "WIFI_AP_SSID (default \$PI_HOSTNAME-ap) must be ASCII letters, digits, or hyphen only for boot AP (got: $APSSID)"
+  [[ -n "${WIFI_AP_PASSWORD:-}" ]] || die "WIFI_AP_BOOT_ONLY=1 requires WIFI_AP_PASSWORD (min 8 chars)"
+  ((${#WIFI_AP_PASSWORD} >= 8)) || die "WIFI_AP_PASSWORD must be at least 8 characters"
+else
+  for v in PI_HOSTNAME PI_USER SSH_PUBKEY_PATH WIFI_SSID WIFI_PASSWORD WIFI_COUNTRY TIMEZONE KEYMAP IMG_URL IMG_SHA_URL; do
+    [[ -n "${!v:-}" ]] || die "config.env missing $v"
+  done
+fi
 [[ -r "$SSH_PUBKEY_PATH" ]] || die "SSH_PUBKEY_PATH not readable: $SSH_PUBKEY_PATH"
 
 need() { command -v "$1" >/dev/null || die "missing tool: $1 (try: brew install $2)"; }
@@ -113,35 +127,131 @@ CRYPT_PW="$("$OPENSSL" passwd -6 "$RANDOM_PW")"
 echo "$RANDOM_PW" > "${HERE}/.last_password"
 chmod 600 "${HERE}/.last_password"
 
-export PI_HOSTNAME PI_USER CRYPT_PW SSH_PUBKEY \
-       WIFI_SSID WIFI_PASSWORD WIFI_COUNTRY TIMEZONE KEYMAP
+export WIFI_AP_BOOT_ONLY="${WIFI_AP_BOOT_ONLY:-0}"
+export PI_HOSTNAME PI_USER CRYPT_PW SSH_PUBKEY WIFI_COUNTRY TIMEZONE KEYMAP
+if is_boot_ap; then
+  export WIFI_SSID="${WIFI_SSID:-unused}"
+  export WIFI_PASSWORD="${WIFI_PASSWORD:-unused}"
+else
+  export WIFI_SSID WIFI_PASSWORD
+fi
+
 python3 - "$TMPL" /Volumes/bootfs/custom.toml <<'PYEOF'
-import os, sys, json
+import os, re, sys, json
+
 tpl_path, out_path = sys.argv[1], sys.argv[2]
-def t(v): return json.dumps(v, ensure_ascii=False)
-s = open(tpl_path, encoding='utf-8').read()
-mapping = {
-    'PI_HOSTNAME': os.environ['PI_HOSTNAME'],
-    'PI_USER': os.environ['PI_USER'],
-    'PI_PASSWORD_CRYPT': os.environ['CRYPT_PW'],
-    'SSH_PUBKEY': os.environ['SSH_PUBKEY'],
-    'WIFI_SSID': os.environ['WIFI_SSID'],
-    'WIFI_PASSWORD': os.environ['WIFI_PASSWORD'],
-    'WIFI_COUNTRY': os.environ['WIFI_COUNTRY'],
-    'TIMEZONE': os.environ['TIMEZONE'],
-    'KEYMAP': os.environ['KEYMAP'],
-}
+boot_ap = os.environ.get("WIFI_AP_BOOT_ONLY", "").lower() in ("1", "true", "yes")
+
+
+def t(v):
+    return json.dumps(v, ensure_ascii=False)
+
+
+s = open(tpl_path, encoding="utf-8").read()
+if boot_ap:
+    s = re.sub(r"\n\[wlan\]\s*\n(?:.|\n)*?(?=\n\[locale\])", "\n", s)
+    mapping = {
+        "PI_HOSTNAME": os.environ["PI_HOSTNAME"],
+        "PI_USER": os.environ["PI_USER"],
+        "PI_PASSWORD_CRYPT": os.environ["CRYPT_PW"],
+        "SSH_PUBKEY": os.environ["SSH_PUBKEY"],
+        "TIMEZONE": os.environ["TIMEZONE"],
+        "KEYMAP": os.environ["KEYMAP"],
+    }
+else:
+    mapping = {
+        "PI_HOSTNAME": os.environ["PI_HOSTNAME"],
+        "PI_USER": os.environ["PI_USER"],
+        "PI_PASSWORD_CRYPT": os.environ["CRYPT_PW"],
+        "SSH_PUBKEY": os.environ["SSH_PUBKEY"],
+        "WIFI_SSID": os.environ["WIFI_SSID"],
+        "WIFI_PASSWORD": os.environ["WIFI_PASSWORD"],
+        "WIFI_COUNTRY": os.environ["WIFI_COUNTRY"],
+        "TIMEZONE": os.environ["TIMEZONE"],
+        "KEYMAP": os.environ["KEYMAP"],
+    }
 for k, v in mapping.items():
     s = s.replace(f'"__{k}__"', t(v))
-open(out_path, 'w', encoding='utf-8').write(s)
+open(out_path, "w", encoding="utf-8").write(s)
 PYEOF
 chmod 600 /Volumes/bootfs/custom.toml
 ok "custom.toml written"
 
 : > /Volumes/bootfs/ssh
 
+if is_boot_ap; then
+  info "WIFI_AP_BOOT_ONLY: staging NetworkManager AP for second boot (no infra Wi-Fi in custom.toml)"
+  BOOTROOT="/Volumes/bootfs"
+  [[ -d "$BOOTROOT" ]] || die "boot volume missing"
+  CMDLINE=""
+  for p in "$BOOTROOT/cmdline.txt" "$BOOTROOT/firmware/cmdline.txt"; do
+    [[ -f "$p" ]] && CMDLINE="$p" && break
+  done
+  [[ -n "$CMDLINE" ]] || die "cmdline.txt not found on boot volume"
+  APSSID="${WIFI_AP_SSID:-${PI_HOSTNAME}-ap}"
+  export APSSID WIFI_AP_PASSWORD
+  python3 - <<'PY'
+import hashlib
+import os
+import pathlib
+import uuid
+
+root = pathlib.Path("/Volumes/bootfs")
+ssid = os.environ["APSSID"]
+pw = os.environ["WIFI_AP_PASSWORD"]
+psk = hashlib.pbkdf2_hmac(
+    "sha1", pw.encode("utf-8"), ssid.encode("utf-8"), 4096, 32
+).hex()
+uid = str(uuid.uuid4())
+text = f"""[connection]
+id=pi5-setup-ap
+uuid={uid}
+type=wifi
+autoconnect=true
+interface-name=wlan0
+
+[wifi]
+mode=ap
+ssid={ssid}
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk={psk}
+
+[ipv4]
+method=shared
+
+[ipv6]
+method=ignore
+"""
+(root / "pi5-hotspot.nmconnection").write_text(text, encoding="utf-8")
+PY
+  printf '%s' "$WIFI_COUNTRY" > "$BOOTROOT/pi5-ap-country"
+  cp "${HERE}/templates/boot-ap-install.sh" "$BOOTROOT/pi5-boot-install-ap.sh"
+  chmod 0755 "$BOOTROOT/pi5-boot-install-ap.sh"
+  marker="pi5-boot-install-ap.sh"
+  python3 - "$CMDLINE" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+c = p.read_text(encoding="utf-8", errors="replace").strip().replace("\n", " ")
+if "pi5-boot-install-ap.sh" not in c:
+    c += (
+        " systemd.run=/bin/bash /boot/firmware/pi5-boot-install-ap.sh"
+        " systemd.run_success_action=none"
+        " systemd.run_failure_action=reboot"
+        " systemd.unit=kernel-command-line.target"
+    )
+p.write_text(c + "\n", encoding="utf-8")
+PY
+  ok "boot AP staged (join SSID «${APSSID}» after ~2 min: first boot expands FS + custom.toml, reboot, second boot starts AP)"
+fi
+
 info "ejecting"
 diskutil eject "$DEV"
 ok "done. Insert the card into the Pi and power on."
 echo
-echo "Next: ./02-connect.sh"
+if is_boot_ap; then
+  echo "Rescue AP: after first automatic reboot, join Wi-Fi «${APSSID}» (WIFI_AP_PASSWORD), then: ssh ${PI_USER}@10.42.0.1"
+else
+  echo "Next: ./02-connect.sh"
+fi
