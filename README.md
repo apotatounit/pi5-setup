@@ -29,7 +29,7 @@ make wifi-ap     # only (re)configure the Pi as a Wi-Fi hotspot you can join
 make audit       # read-only check: passes/fails every invariant
 ```
 
-Set `WIFI_AP_PASSWORD` (≥8 characters) and optional `WIFI_AP_SSID` / `WIFI_AP_ENABLE` in `config.env`. The first `make wifi-ap` or `make bootstrap` still needs **some way to SSH into the Pi once** (Ethernet, USB‑gadget/serial, or working infra Wi‑Fi). After that, join the Pi’s AP (default SSID `<hostname>-ap`) and SSH to the printed address — often `10.42.0.1`.
+Set `WIFI_AP_PASSWORD` (≥8 characters) and optional `WIFI_AP_SSID` / `WIFI_AP_ENABLE` in `config.env`. The first `make wifi-ap` or `make bootstrap` still needs **some way to SSH into the Pi once** (Ethernet, USB‑gadget/serial, or working infra Wi‑Fi). After that, join the Pi’s AP (default SSID `<hostname>-ap`) and SSH to the printed address — often `10.42.0.1`. If SSH says **REMOTE HOST IDENTIFICATION HAS CHANGED** for `10.42.0.1`, your Mac still has another device’s host key for that reused address (or the Pi was re-flashed). Run **`ssh-keygen -R 10.42.0.1`**, then connect again and accept the new fingerprint.
 
 ### No Ethernet and you cannot see the Pi on the network
 
