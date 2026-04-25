@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 HOST  := $(shell . ./config.env 2>/dev/null && echo $$PI_HOSTNAME)
 
-.PHONY: help flash connect bootstrap wifi-ap audit all clean version-commit
+.PHONY: help flash connect ssh-ap bootstrap wifi-ap audit all clean version-commit
 help:
 	@awk 'BEGIN{FS=":.*##"; printf "targets:\n"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-10s %s\n",$$1,$$2}' $(MAKEFILE_LIST)
 
@@ -14,6 +14,9 @@ flash: config.env ## flash SD + firstboot config (macOS)
 
 connect: ## discover Pi + add ~/.ssh/config entry
 	bash ./02-connect.sh
+
+ssh-ap: config.env ## SSH over rescue AP (10.42.0.1): pubkey-only, no password prompt (see README if denied)
+	bash ./tools/ssh-ap.sh
 
 bootstrap: config.env ## idempotent Pi setup + optional Wi-Fi AP (see WIFI_AP_* in config.env)
 	bash ./tools/ssh-with-config.sh 03-bootstrap.sh 05-wifi-ap.sh

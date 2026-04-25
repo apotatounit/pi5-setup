@@ -1,0 +1,1 @@
+this folder contains results of another attempt via cursor ai - with rpi5 ap mode

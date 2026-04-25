@@ -24,6 +24,7 @@ make flash       # downloads + verifies image, prompts for SD target, flashes,
                  # drops custom.toml into /boot/firmware for firstboot
 # --- move card to Pi, power on, wait ~90s ---
 make connect     # resolves <hostname>.local, writes ~/.ssh/config entry
+make ssh-ap      # SSH to Pi over rescue AP at 10.42.0.1 (pubkey-only; use after WIFI_AP_BOOT_ONLY + join AP)
 make bootstrap   # Pi-side setup + optional Wi-Fi AP (see WIFI_AP_* in config.env)
 make wifi-ap     # only (re)configure the Pi as a Wi-Fi hotspot you can join
 make audit       # read-only check: passes/fails every invariant
@@ -62,7 +63,7 @@ make all
 - `custom.toml` is written mode 600. The plaintext Wi-Fi password never leaves the bootfs after firstboot consumes and deletes it.
 - SSH is key-only from first boot; password auth is disabled both in `custom.toml` and reinforced by `sshd_config.d/10-hardening.conf`.
 - The user password in `custom.toml` is random per flash (base64, 40 chars), stored in `.last_password` on the Mac only, and written to `/etc/shadow` as SHA-512. You never need it unless you plug in a keyboard and monitor.
-- **SSH** is **key-only** from first boot. Prefer **`ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 pi@<ip>`** so the client does not try other keys first. The *“valid user has not been set up”* banner can appear until first-boot finishes; if login still fails, the image may have shipped **`firstrun.sh`** (Imager) which otherwise makes Raspberry Pi OS **skip `custom.toml` `[user]`** — `make flash` now **deletes `firstrun.sh`** from the boot partition when writing the card so **`pi` + `authorized_keys` are always created** from `custom.toml`.
+- **SSH** is **key-only** from first boot. If the client **asks for a password** even with `-i ~/.ssh/id_ed25519`, public-key auth already failed and OpenSSH is falling back — use **`make ssh-ap`** (same as **`ssh -o BatchMode=yes -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 pi@10.42.0.1`**) so you get **`Permission denied (publickey)`** instead of a useless password prompt. Then run **`ssh -vvv …`** and confirm **“Offering public key”** / **“Server refused our key”** (Pi has no matching `authorized_keys` — re-flash with latest `make flash`, or check the private key matches `SSH_PUBKEY_PATH`). On macOS, **`chmod 600 ~/.ssh/id_ed25519`**; if the key has **`@`** flags, try **`xattr -c ~/.ssh/id_ed25519`**. The *“valid user has not been set up”* banner can appear until first-boot finishes; **`firstrun.sh`** on the card used to skip **`custom.toml` `[user]`** — **`make flash`** now removes **`firstrun.sh`** from the boot partition when present.
 
 ## Reproducing from scratch
 

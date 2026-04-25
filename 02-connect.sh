@@ -59,7 +59,9 @@ rm -f "$tmp"
 ok "~/.ssh/config updated"
 
 info "testing ssh"
-ssh -o BatchMode=yes -o ConnectTimeout=10 "$PI_HOSTNAME" 'echo "connected as $(whoami)@$(hostname)"' \
+ssh -o BatchMode=yes -o ConnectTimeout=10 \
+  -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes \
+  "$PI_HOSTNAME" 'echo "connected as $(whoami)@$(hostname)"' \
   || die "ssh failed. First boot can take 90s; retry."
 
 ok "ready. Next: ./03-bootstrap.sh"
